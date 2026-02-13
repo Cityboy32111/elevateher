@@ -35,7 +35,7 @@ export interface NavProps {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
   { href: "/journey", label: "Journey", icon: Map },
-  { href: "/check-in", label: "Check-in", icon: Heart },
+  { href: "/checkin", label: "Check-in", icon: Heart },
   { href: "/toolkits", label: "Toolkits", icon: BookOpen },
   { href: "/coaching", label: "Coaching", icon: MessageCircle },
   { href: "/community", label: "Community", icon: Users },
