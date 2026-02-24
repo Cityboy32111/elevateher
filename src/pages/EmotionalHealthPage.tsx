@@ -14,6 +14,7 @@ import {
   Smile,
   Loader2,
   ArrowLeft,
+  AlertTriangle,
 } from "lucide-react";
 
 const feelings = [
@@ -102,6 +103,15 @@ export default function EmotionalHealthPage() {
   return (
     <AppLayout>
       <div className="space-y-6 max-w-4xl mx-auto">
+        {/* Crisis Disclaimer — permanent, non-dismissible */}
+        <div className="rounded-lg border border-red-300 bg-red-50 p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-red-800 leading-relaxed">
+            <strong>If you are in crisis or experiencing thoughts of self-harm,</strong> please stop and contact the{" "}
+            <strong>988 Suicide and Crisis Lifeline</strong> by calling or texting <strong>988</strong>, or go to your nearest emergency room. This platform is not a crisis service.
+          </p>
+        </div>
+
         <div>
           <h1 className="text-3xl font-bold">Emotional Health</h1>
           <p className="text-muted-foreground mt-1">

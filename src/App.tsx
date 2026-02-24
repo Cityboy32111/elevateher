@@ -20,6 +20,11 @@ import NotificationsPage from "@/pages/NotificationsPage";
 import AdminDashboard from "@/pages/AdminDashboard";
 import ContentManagerPage from "@/pages/ContentManagerPage";
 import ExpertDashboard from "@/pages/ExpertDashboard";
+import TherapistOnboardingPage from "@/pages/TherapistOnboardingPage";
+import CompanySignupPage from "@/pages/CompanySignupPage";
+import AcceptInvitePage from "@/pages/AcceptInvitePage";
+import AdminInvitePage from "@/pages/AdminInvitePage";
+import BillingPage from "@/pages/BillingPage";
 import NotFound from "@/pages/NotFound";
 
 function App() {
@@ -32,6 +37,8 @@ function App() {
             {/* Public */}
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/company-signup" element={<CompanySignupPage />} />
+            <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
             {/* Employee (any authenticated user) */}
             <Route path="/dashboard" element={<Dashboard />} />
@@ -56,6 +63,22 @@ function App() {
               }
             />
             <Route
+              path="/admin/invite"
+              element={
+                <ProtectedRoute allowedRoles={["hr_admin"]}>
+                  <AdminInvitePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/billing"
+              element={
+                <ProtectedRoute allowedRoles={["hr_admin"]}>
+                  <BillingPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/content-manager"
               element={
                 <ProtectedRoute allowedRoles={["hr_admin"]}>
@@ -64,12 +87,20 @@ function App() {
               }
             />
 
-            {/* Coach Only */}
+            {/* Coach / Therapist */}
             <Route
               path="/expert"
               element={
-                <ProtectedRoute allowedRoles={["talia_coach"]}>
+                <ProtectedRoute allowedRoles={["talia_coach", "therapist"]}>
                   <ExpertDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/therapist-onboarding"
+              element={
+                <ProtectedRoute allowedRoles={["talia_coach", "therapist"]}>
+                  <TherapistOnboardingPage />
                 </ProtectedRoute>
               }
             />

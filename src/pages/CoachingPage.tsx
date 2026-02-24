@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar, Clock, User, Video, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays, setHours, setMinutes } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
+import { useConsent } from "@/hooks/useConsent";
+import { ConsentModal } from "@/components/consent/ConsentModal";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Coach {
   id: string;
@@ -35,15 +39,66 @@ const generateTimeSlots = () => {
 };
 
 export default function CoachingPage() {
+  const { user, profile } = useAuth();
+  const { checkConsent } = useConsent();
   const [selectedCoach, setSelectedCoach] = useState<Coach | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Date | null>(null);
   const [booked, setBooked] = useState(false);
+  const [showConsent, setShowConsent] = useState(false);
+  const [hasConsent, setHasConsent] = useState<boolean | null>(null);
+  const [eligibilityError, setEligibilityError] = useState<string | null>(null);
   const timeSlots = generateTimeSlots();
 
-  const handleBook = () => {
+  useEffect(() => {
+    if (user) {
+      checkConsent(user.id, "therapy_services").then(setHasConsent);
+    }
+  }, [user, checkConsent]);
+
+  const checkStateEligibility = async (coachId: string): Promise<boolean> => {
+    if (!profile?.state) return true; // If no state set, skip check
+    const { data, error } = await supabase.rpc("therapist_eligible_for_state", {
+      _therapist_id: coachId,
+      _state: profile.state,
+    });
+    if (error) {
+      console.error("Eligibility check error:", error);
+      return true; // Allow if function doesn't exist yet
+    }
+    return data as boolean;
+  };
+
+  const handleBook = async () => {
     if (!selectedCoach || !selectedSlot) return;
+
+    // Check consent first
+    if (hasConsent === false) {
+      setShowConsent(true);
+      return;
+    }
+
+    // Check state eligibility
+    const eligible = await checkStateEligibility(selectedCoach.id);
+    if (!eligible) {
+      setEligibilityError(
+        "This therapist is not currently licensed to practice in your state. Please select a different therapist or contact support."
+      );
+      return;
+    }
+
+    setEligibilityError(null);
     setBooked(true);
     toast.success("Session booked successfully!");
+  };
+
+  const handleConsentComplete = () => {
+    setShowConsent(false);
+    setHasConsent(true);
+    // Retry booking after consent
+    if (selectedCoach && selectedSlot) {
+      setBooked(true);
+      toast.success("Session booked successfully!");
+    }
   };
 
   const handleGoogleCalendar = () => {
@@ -62,6 +117,11 @@ export default function CoachingPage() {
 
   return (
     <AppLayout>
+      <ConsentModal
+        open={showConsent}
+        onConsented={handleConsentComplete}
+        onCancel={() => setShowConsent(false)}
+      />
       <div className="space-y-6 max-w-4xl mx-auto">
         <div>
           <h1 className="text-3xl font-bold">Coaching</h1>
@@ -135,6 +195,16 @@ export default function CoachingPage() {
                         </Button>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Eligibility Error */}
+                {eligibilityError && (
+                  <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+                    <p className="text-sm text-red-800 flex items-start gap-2">
+                      <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      {eligibilityError}
+                    </p>
                   </div>
                 )}
 

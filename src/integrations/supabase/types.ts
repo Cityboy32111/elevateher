@@ -1,4 +1,4 @@
-export type AppRole = "mom" | "talia_coach" | "manager" | "hr_admin";
+export type AppRole = "mom" | "talia_coach" | "manager" | "hr_admin" | "therapist";
 
 export interface Company {
   id: string;
@@ -20,6 +20,7 @@ export interface Profile {
   role: AppRole;
   department: string | null;
   return_date: string | null;
+  state: string | null;
   burnout_score: number;
   assigned_coach_id: string | null;
   created_at: string;
@@ -173,4 +174,101 @@ export interface AuditLog {
   resource_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
+}
+
+export interface TherapistLicense {
+  id: string;
+  therapist_id: string;
+  license_type: string;
+  license_number: string;
+  state: string;
+  expires_on: string;
+  verified: boolean;
+  verified_at: string | null;
+  verified_by: string | null;
+  malpractice_insurance_url: string | null;
+  license_document_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TherapistAvailability {
+  id: string;
+  therapist_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  timezone: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface TherapyNote {
+  id: string;
+  session_id: string;
+  therapist_id: string;
+  client_id: string;
+  note_type: string;
+  content: string;
+  is_locked: boolean;
+  locked_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConsentRecord {
+  id: string;
+  user_id: string;
+  consent_type: string;
+  consent_version: string;
+  consented_at: string;
+  consent_text: string;
+  ip_address: string | null;
+  user_agent: string | null;
+}
+
+export interface CompanyInvitation {
+  id: string;
+  company_id: string;
+  email: string;
+  role: AppRole;
+  invited_by: string | null;
+  token: string;
+  accepted: boolean;
+  accepted_at: string | null;
+  expires_at: string;
+  created_at: string;
+  company?: Company;
+}
+
+export interface Subscription {
+  id: string;
+  company_id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  plan_name: string;
+  status: string;
+  seats_included: number;
+  price_per_year: number;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  trial_ends_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TherapistPayout {
+  id: string;
+  therapist_id: string;
+  period_start: string;
+  period_end: string;
+  sessions_completed: number;
+  rate_per_session: number;
+  total_amount: number;
+  status: string;
+  paid_at: string | null;
+  payment_reference: string | null;
+  created_at: string;
+  updated_at: string;
 }

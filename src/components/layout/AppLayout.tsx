@@ -19,6 +19,9 @@ import {
   BarChart3,
   FileEdit,
   UserCog,
+  UserPlus,
+  CreditCard,
+  ClipboardCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -43,10 +46,13 @@ const employeeLinks = [
 const adminLinks = [
   { to: "/admin", label: "Employer Analytics", icon: BarChart3 },
   { to: "/content-manager", label: "Content Manager", icon: FileEdit },
+  { to: "/admin/invite", label: "Invite Employees", icon: UserPlus },
+  { to: "/admin/billing", label: "Billing", icon: CreditCard },
 ];
 
 const coachLinks = [
   { to: "/expert", label: "Coach Dashboard", icon: UserCog },
+  { to: "/therapist-onboarding", label: "Complete Profile", icon: ClipboardCheck },
 ];
 
 interface AppLayoutProps {
@@ -123,7 +129,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </>
           )}
 
-          {profile?.role === "talia_coach" && (
+          {(profile?.role === "talia_coach" || profile?.role === "therapist") && (
             <>
               <Separator className="my-2" />
               <p className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase">
@@ -142,7 +148,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                   )}
                 >
                   <link.icon className="h-4 w-4" />
-                  {link.label}
+                  <span className="flex-1">{link.label}</span>
+                  {link.to === "/therapist-onboarding" && (
+                    <span className="h-2 w-2 rounded-full bg-yellow-400" />
+                  )}
                 </Link>
               ))}
             </>
