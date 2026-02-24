@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { differenceInWeeks } from "date-fns";
+import { differenceInWeeks, format } from "date-fns";
 import {
   Heart, Map, Users, ScrollText, BookOpen, MessageSquare,
   Briefcase, Folder, Smile, Meh, Frown, Sun, CloudRain,
+  Bell, Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -57,15 +59,114 @@ const quickLinks = [
   { to: "/resources", label: "Resources", icon: Folder, color: "bg-teal-50" },
 ];
 
+interface UpcomingSession {
+  id: string;
+  scheduled_at: string;
+  coach_name: string;
+  status: string;
+}
+
 export default function Dashboard() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const [selectedMood, setSelectedMood] = useState<number | null>(null);
+  const [upcomingSessions, setUpcomingSessions] = useState<UpcomingSession[]>([]);
+  const [weeklyProgress, setWeeklyProgress] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const phase = getCurrentPhase(profile?.return_date || null);
   const firstName = profile?.full_name?.split(" ")[0] || "there";
 
-  const handleMoodSelect = (score: number) => {
+  // Fetch today's mood if already recorded
+  useEffect(() => {
+    if (!user) return;
+    const today = new Date().toISOString().split("T")[0];
+    supabase
+      .from("daily_pulses")
+      .select("mood_score")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setSelectedMood(data.mood_score);
+      });
+  }, [user]);
+
+  // Fetch upcoming coaching sessions
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("coaching_sessions")
+      .select("id, scheduled_at, status, coach:profiles!coaching_sessions_coach_id_fkey(full_name)")
+      .eq("mom_id", user.id)
+      .gte("scheduled_at", new Date().toISOString())
+      .eq("status", "scheduled")
+      .order("scheduled_at", { ascending: true })
+      .limit(3)
+      .then(({ data }) => {
+        if (data) {
+          setUpcomingSessions(
+            data.map((s: any) => ({
+              id: s.id,
+              scheduled_at: s.scheduled_at,
+              coach_name: s.coach?.full_name || "Coach",
+              status: s.status,
+            }))
+          );
+        }
+      });
+  }, [user]);
+
+  // Fetch weekly task progress
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("timeline_tasks")
+      .select("completed")
+      .eq("user_id", user.id)
+      .eq("phase", phase)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const completed = data.filter((t) => t.completed).length;
+          setWeeklyProgress(Math.round((completed / data.length) * 100));
+        }
+      });
+  }, [user, phase]);
+
+  // Fetch unread notification count
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("read", false)
+      .then(({ count }) => {
+        if (count !== null) setUnreadNotifications(count);
+      });
+  }, [user]);
+
+  const handleMoodSelect = async (score: number) => {
+    if (!user) return;
     setSelectedMood(score);
-    toast.success("Mood recorded! Take care of yourself today.");
+
+    const today = new Date().toISOString().split("T")[0];
+    const { error } = await supabase
+      .from("daily_pulses")
+      .upsert(
+        {
+          user_id: user.id,
+          company_id: profile?.company_id || null,
+          date: today,
+          mood_score: score,
+        },
+        { onConflict: "user_id,date" }
+      );
+
+    if (error) {
+      console.error("Error saving mood:", error);
+      toast.error("Failed to save mood. Please try again.");
+    } else {
+      toast.success("Mood recorded! Take care of yourself today.");
+    }
   };
 
   return (
@@ -81,7 +182,16 @@ export default function Dashboard() {
                   Here's your journey overview for today
                 </CardDescription>
               </div>
-              <Badge className={phaseColors[phase]}>{phaseLabels[phase]}</Badge>
+              <div className="flex items-center gap-3">
+                {unreadNotifications > 0 && (
+                  <Link to="/notifications">
+                    <Badge variant="destructive" className="gap-1">
+                      <Bell className="h-3 w-3" /> {unreadNotifications} new
+                    </Badge>
+                  </Link>
+                )}
+                <Badge className={phaseColors[phase]}>{phaseLabels[phase]}</Badge>
+              </div>
             </div>
           </CardHeader>
         </Card>
@@ -138,7 +248,23 @@ export default function Dashboard() {
               <CardTitle className="text-lg">Upcoming Coaching</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground text-sm">No upcoming sessions.</p>
+              {upcomingSessions.length > 0 ? (
+                <div className="space-y-3">
+                  {upcomingSessions.map((session) => (
+                    <div key={session.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      <Calendar className="h-5 w-5 text-primary shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">with {session.coach_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(session.scheduled_at), "MMM d, yyyy 'at' h:mm a")}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm">No upcoming sessions.</p>
+              )}
               <Button variant="outline" className="mt-4" asChild>
                 <Link to="/coaching">Book a Session</Link>
               </Button>
@@ -153,8 +279,8 @@ export default function Dashboard() {
               <p className="text-sm text-muted-foreground">
                 Focus on your current phase tasks to stay on track.
               </p>
-              <Progress value={35} className="h-2" />
-              <p className="text-xs text-muted-foreground">35% of this week's tasks completed</p>
+              <Progress value={weeklyProgress} className="h-2" />
+              <p className="text-xs text-muted-foreground">{weeklyProgress}% of your phase tasks completed</p>
               <Button variant="outline" size="sm" asChild>
                 <Link to="/timeline">View Timeline</Link>
               </Button>

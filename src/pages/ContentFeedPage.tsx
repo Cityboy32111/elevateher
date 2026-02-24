@@ -1,7 +1,10 @@
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Video, Image, FileAudio, File } from "lucide-react";
+import { Loader2, FileText, Video, Image, FileAudio, File, Inbox } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const mediaTypeIcons: Record<string, React.ElementType> = {
   article: FileText,
@@ -11,50 +14,67 @@ const mediaTypeIcons: Record<string, React.ElementType> = {
   pdf: File,
 };
 
-const sampleContent = [
-  {
-    id: "1",
-    title: "Navigating Your First Week Back: A Manager's Perspective",
-    body: "Your first week back doesn't have to be overwhelming. Here are some strategies from managers who have successfully supported returning team members...\n\nKey Tips:\n1. Don't try to catch up on everything in the first week\n2. Schedule 1:1s with your key stakeholders\n3. Ask your manager about any team changes that happened while you were away\n4. Set realistic expectations for yourself and communicate them clearly",
-    mediaType: "article",
-    targetPhase: "reentry",
-    publishedAt: "2026-02-20",
-  },
-  {
-    id: "2",
-    title: "Setting Up a Pumping Schedule That Works",
-    body: "Managing pumping at work requires planning and boundary-setting. Here's a practical guide...\n\nPractical Steps:\n- Block your calendar for pumping sessions before your first day back\n- Test your pump setup at home to know exactly how long sessions take\n- Have a backup plan (manual pump, freezer stash)\n- Know your legal rights — your employer must provide time and space",
-    mediaType: "article",
-    targetPhase: "reentry",
-    publishedAt: "2026-02-18",
-  },
-  {
-    id: "3",
-    title: "5-Minute Desk Stretches for Returning Moms",
-    body: "Short video demonstrating quick stretches you can do at your desk to relieve tension from sitting, pumping, and carrying a baby.",
-    mediaType: "video",
-    targetPhase: "all",
-    publishedAt: "2026-02-15",
-  },
-  {
-    id: "4",
-    title: "Financial Planning Checklist for New Parents",
-    body: "A comprehensive PDF checklist covering insurance updates, tax advantages, childcare budgeting, and emergency fund planning.",
-    mediaType: "pdf",
-    targetPhase: "all",
-    publishedAt: "2026-02-10",
-  },
-  {
-    id: "5",
-    title: "Talking to Your Partner About the Mental Load",
-    body: "An audio guide walking through how to have productive conversations about sharing household responsibilities, with scripts and examples.",
-    mediaType: "audio",
-    targetPhase: "leave",
-    publishedAt: "2026-02-05",
-  },
-];
+interface ContentItem {
+  id: string;
+  title: string;
+  body: string | null;
+  mediaType: string;
+  targetPhase: string;
+  publishedAt: string;
+}
 
 export default function ContentFeedPage() {
+  const { profile } = useAuth();
+  const [content, setContent] = useState<ContentItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchContent = async () => {
+      setLoading(true);
+      let query = supabase
+        .from("content")
+        .select("*")
+        .eq("published", true)
+        .order("published_at", { ascending: false });
+
+      if (profile?.company_id) {
+        query = query.eq("company_id", profile.company_id);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("Error fetching content:", error);
+        setLoading(false);
+        return;
+      }
+
+      setContent(
+        (data || []).map((item) => ({
+          id: item.id,
+          title: item.title,
+          body: item.body,
+          mediaType: item.media_type || "article",
+          targetPhase: item.target_phase || "all",
+          publishedAt: item.published_at || item.created_at,
+        }))
+      );
+      setLoading(false);
+    };
+
+    fetchContent();
+  }, [profile?.company_id]);
+
+  if (loading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="space-y-6 max-w-4xl mx-auto">
@@ -65,37 +85,47 @@ export default function ContentFeedPage() {
           </p>
         </div>
 
-        <div className="space-y-4">
-          {sampleContent.map((item) => {
-            const Icon = mediaTypeIcons[item.mediaType] || FileText;
-            return (
-              <Card key={item.id} className="hover:shadow-md transition-shadow cursor-pointer">
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    <div className="h-12 w-12 rounded-lg bg-lavender-100 flex items-center justify-center shrink-0">
-                      <Icon className="h-6 w-6 text-primary" />
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-semibold">{item.title}</h3>
-                        <div className="flex gap-2 shrink-0">
-                          <Badge variant="outline">{item.mediaType}</Badge>
-                          <Badge variant="secondary">{item.targetPhase}</Badge>
-                        </div>
+        {content.length === 0 ? (
+          <div className="text-center py-16">
+            <Inbox className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+            <p className="text-lg font-medium text-muted-foreground">No content available yet</p>
+            <p className="text-sm text-muted-foreground mt-1">Your HR team will publish content here as part of your journey.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {content.map((item) => {
+              const Icon = mediaTypeIcons[item.mediaType] || FileText;
+              return (
+                <Card key={item.id} className="hover:shadow-md transition-shadow cursor-pointer">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                      <div className="h-12 w-12 rounded-lg bg-lavender-100 flex items-center justify-center shrink-0">
+                        <Icon className="h-6 w-6 text-primary" />
                       </div>
-                      <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
-                        {item.body}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Published {new Date(item.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                      </p>
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-semibold">{item.title}</h3>
+                          <div className="flex gap-2 shrink-0">
+                            <Badge variant="outline">{item.mediaType}</Badge>
+                            <Badge variant="secondary">{item.targetPhase}</Badge>
+                          </div>
+                        </div>
+                        {item.body && (
+                          <p className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
+                            {item.body}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Published {new Date(item.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
     </AppLayout>
   );

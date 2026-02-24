@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calculator, Eye, Map, Trophy, Plus, Trash2, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Promotion Calculator
 function PromotionCalculator() {
+  const { user } = useAuth();
   const [currentTitle, setCurrentTitle] = useState("");
   const [targetTitle, setTargetTitle] = useState("");
   const [currentSalary, setCurrentSalary] = useState(85000);
@@ -21,6 +24,21 @@ function PromotionCalculator() {
 
   const salaryGrowth = targetSalary - currentSalary;
   const growthPercent = ((salaryGrowth / currentSalary) * 100).toFixed(1);
+
+  const handleCalculate = async () => {
+    setCalculated(true);
+    if (user) {
+      await supabase.from("career_toolkit_data").upsert(
+        {
+          user_id: user.id,
+          tool_type: "promotion_calculator",
+          data: { currentTitle, targetTitle, currentSalary, targetSalary },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,tool_type" }
+      );
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -42,7 +60,7 @@ function PromotionCalculator() {
           <Input type="number" value={targetSalary} onChange={(e) => setTargetSalary(Number(e.target.value))} />
         </div>
       </div>
-      <Button onClick={() => setCalculated(true)}>Calculate Path</Button>
+      <Button onClick={handleCalculate}>Calculate Path</Button>
       {calculated && (
         <Card className="border-primary/20 bg-primary/5">
           <CardContent className="pt-6 space-y-4">
@@ -79,20 +97,54 @@ function PromotionCalculator() {
 
 // Visibility Planner
 function VisibilityPlanner() {
-  const [actions, setActions] = useState<Array<{ id: string; category: string; action: string; date: string }>>([
-    { id: "1", category: "Meetings", action: "Present quarterly results to leadership", date: "2026-03-15" },
-    { id: "2", category: "Projects", action: "Lead the cross-team integration project", date: "2026-04-01" },
-  ]);
+  const { user } = useAuth();
+  const [actions, setActions] = useState<Array<{ id: string; category: string; action: string; date: string }>>([]);
   const [newCategory, setNewCategory] = useState("Meetings");
   const [newAction, setNewAction] = useState("");
   const [newDate, setNewDate] = useState("");
 
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("career_toolkit_data")
+      .select("data")
+      .eq("user_id", user.id)
+      .eq("tool_type", "visibility_planner")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.data && Array.isArray((data.data as any).actions)) {
+          setActions((data.data as any).actions);
+        }
+      });
+  }, [user]);
+
+  const saveActions = async (newActions: typeof actions) => {
+    if (!user) return;
+    await supabase.from("career_toolkit_data").upsert(
+      {
+        user_id: user.id,
+        tool_type: "visibility_planner",
+        data: { actions: newActions },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,tool_type" }
+    );
+  };
+
   const addAction = () => {
     if (!newAction.trim()) return;
-    setActions((prev) => [...prev, { id: Date.now().toString(), category: newCategory, action: newAction, date: newDate }]);
+    const updated = [...actions, { id: Date.now().toString(), category: newCategory, action: newAction, date: newDate }];
+    setActions(updated);
+    saveActions(updated);
     setNewAction("");
     setNewDate("");
     toast.success("Action added!");
+  };
+
+  const removeAction = (id: string) => {
+    const updated = actions.filter((a) => a.id !== id);
+    setActions(updated);
+    saveActions(updated);
   };
 
   return (
@@ -123,7 +175,7 @@ function VisibilityPlanner() {
                 <Badge variant="secondary">{action.category}</Badge>
                 <span className="text-sm">{action.action}</span>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => setActions((prev) => prev.filter((a) => a.id !== action.id))}>
+              <Button variant="ghost" size="icon" onClick={() => removeAction(action.id)}>
                 <Trash2 className="h-4 w-4 text-muted-foreground" />
               </Button>
             </CardContent>
@@ -137,20 +189,53 @@ function VisibilityPlanner() {
 
 // Workload Mapper
 function WorkloadMapper() {
-  const [tasks, setTasks] = useState<Array<{ id: string; name: string; impact: string; effort: string }>>([
-    { id: "1", name: "Weekly status reports", impact: "low", effort: "high" },
-    { id: "2", name: "Client presentation prep", impact: "high", effort: "high" },
-    { id: "3", name: "Team mentoring", impact: "high", effort: "low" },
-  ]);
+  const { user } = useAuth();
+  const [tasks, setTasks] = useState<Array<{ id: string; name: string; impact: string; effort: string }>>([]);
   const [newTask, setNewTask] = useState("");
   const [newImpact, setNewImpact] = useState("high");
   const [newEffort, setNewEffort] = useState("high");
 
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("career_toolkit_data")
+      .select("data")
+      .eq("user_id", user.id)
+      .eq("tool_type", "workload_mapper")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.data && Array.isArray((data.data as any).tasks)) {
+          setTasks((data.data as any).tasks);
+        }
+      });
+  }, [user]);
+
+  const saveTasks = async (newTasks: typeof tasks) => {
+    if (!user) return;
+    await supabase.from("career_toolkit_data").upsert(
+      {
+        user_id: user.id,
+        tool_type: "workload_mapper",
+        data: { tasks: newTasks },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,tool_type" }
+    );
+  };
+
   const addTask = () => {
     if (!newTask.trim()) return;
-    setTasks((prev) => [...prev, { id: Date.now().toString(), name: newTask, impact: newImpact, effort: newEffort }]);
+    const updated = [...tasks, { id: Date.now().toString(), name: newTask, impact: newImpact, effort: newEffort }];
+    setTasks(updated);
+    saveTasks(updated);
     setNewTask("");
     toast.success("Task added!");
+  };
+
+  const removeTask = (id: string) => {
+    const updated = tasks.filter((x) => x.id !== id);
+    setTasks(updated);
+    saveTasks(updated);
   };
 
   const quadrants = [
@@ -191,7 +276,7 @@ function WorkloadMapper() {
                 {tasks.filter((t) => t.impact === q.impact && t.effort === q.effort).map((t) => (
                   <div key={t.id} className="flex items-center justify-between p-2 bg-white/70 rounded">
                     <span className="text-sm">{t.name}</span>
-                    <Button variant="ghost" size="icon" onClick={() => setTasks((prev) => prev.filter((x) => x.id !== t.id))}>
+                    <Button variant="ghost" size="icon" onClick={() => removeTask(t.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -210,15 +295,43 @@ function WorkloadMapper() {
 
 // Accomplishment Vault
 function AccomplishmentVault() {
-  const [entries, setEntries] = useState<Array<{ id: string; date: string; title: string; description: string; impact: string; category: string }>>([
-    { id: "1", date: "2026-02-10", title: "Led product launch", description: "Coordinated cross-functional team of 12 to deliver new feature ahead of schedule", impact: "Revenue impact: $150K ARR increase", category: "Leadership" },
-    { id: "2", date: "2026-01-28", title: "Mentored junior developer", description: "3-month mentorship program resulting in successful solo project delivery", impact: "Team capability improvement, reduced code review time by 30%", category: "Mentoring" },
-  ]);
+  const { user } = useAuth();
+  const [entries, setEntries] = useState<Array<{ id: string; date: string; title: string; description: string; impact: string; category: string }>>([]);
   const [newEntry, setNewEntry] = useState({ date: "", title: "", description: "", impact: "", category: "Leadership" });
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("career_toolkit_data")
+      .select("data")
+      .eq("user_id", user.id)
+      .eq("tool_type", "accomplishment_vault")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.data && Array.isArray((data.data as any).entries)) {
+          setEntries((data.data as any).entries);
+        }
+      });
+  }, [user]);
+
+  const saveEntries = async (newEntries: typeof entries) => {
+    if (!user) return;
+    await supabase.from("career_toolkit_data").upsert(
+      {
+        user_id: user.id,
+        tool_type: "accomplishment_vault",
+        data: { entries: newEntries },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,tool_type" }
+    );
+  };
 
   const addEntry = () => {
     if (!newEntry.title.trim()) return;
-    setEntries((prev) => [{ ...newEntry, id: Date.now().toString() }, ...prev]);
+    const updated = [{ ...newEntry, id: Date.now().toString() }, ...entries];
+    setEntries(updated);
+    saveEntries(updated);
     setNewEntry({ date: "", title: "", description: "", impact: "", category: "Leadership" });
     toast.success("Accomplishment recorded!");
   };
@@ -271,10 +384,18 @@ function AccomplishmentVault() {
 
       <div className="flex justify-between items-center">
         <h3 className="font-semibold">Your Accomplishments ({entries.length})</h3>
-        <Button variant="outline" size="sm" onClick={handleCopyAll}><Copy className="mr-2 h-3 w-3" /> Copy All</Button>
+        {entries.length > 0 && (
+          <Button variant="outline" size="sm" onClick={handleCopyAll}><Copy className="mr-2 h-3 w-3" /> Copy All</Button>
+        )}
       </div>
 
       <div className="space-y-3">
+        {entries.length === 0 && (
+          <div className="text-center py-12">
+            <Trophy className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+            <p className="text-muted-foreground">No accomplishments recorded yet. Start building your vault!</p>
+          </div>
+        )}
         {entries.map((entry) => (
           <Card key={entry.id}>
             <CardContent className="pt-4">
@@ -285,7 +406,7 @@ function AccomplishmentVault() {
                     <Badge variant="secondary">{entry.category}</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{entry.description}</p>
-                  <p className="text-sm font-medium text-primary">{entry.impact}</p>
+                  {entry.impact && <p className="text-sm font-medium text-primary">{entry.impact}</p>}
                 </div>
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{entry.date}</span>
               </div>

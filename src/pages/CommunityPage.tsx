@@ -1,18 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MessageSquare, Heart, Plus, Send, ArrowLeft, User } from "lucide-react";
+import { MessageSquare, Heart, Plus, Send, ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const categories = ["general", "tips", "wins", "venting", "questions"] as const;
 
@@ -37,15 +37,10 @@ interface Post {
   createdAt: string;
 }
 
-const samplePosts: Post[] = [
-  { id: "1", author: "Sarah M.", isAnonymous: false, category: "wins", title: "First week back went better than expected!", body: "I was so nervous about returning, but my team was incredibly supportive. My manager had a whole re-onboarding plan ready. Sharing this for anyone who's dreading day one — it might surprise you!", likes: 12, liked: false, replies: [{ id: "r1", author: "Anonymous Mom", isAnonymous: true, body: "This gives me so much hope! I go back next month.", createdAt: "2h ago" }], createdAt: "5h ago" },
-  { id: "2", author: "Anonymous Mom", isAnonymous: true, category: "venting", title: "Pumping at work is a nightmare", body: "My company says they support nursing mothers but the 'wellness room' is a converted closet with no lock. I've been interrupted twice this week. I know I have rights but I'm too tired to fight.", likes: 24, liked: false, replies: [{ id: "r2", author: "Jessica K.", isAnonymous: false, body: "I'm so sorry. You deserve better. If it helps, the Scripts section has a great template for requesting proper accommodations.", createdAt: "1h ago" }, { id: "r3", author: "Anonymous Mom", isAnonymous: true, body: "Same situation here. I started using the script from this app and things improved. Sending you strength.", createdAt: "45m ago" }], createdAt: "1d ago" },
-  { id: "3", author: "Maria L.", isAnonymous: false, category: "tips", title: "Game-changer: meal prepping on Sundays", body: "I know this sounds basic but having a whole week of lunches ready has reduced my morning stress by 80%. I spend 2 hours on Sunday and I'm set. Happy to share my go-to recipes!", likes: 18, liked: false, replies: [], createdAt: "2d ago" },
-  { id: "4", author: "Anonymous Mom", isAnonymous: true, category: "questions", title: "How to handle 'so who's watching the baby?' questions?", body: "Every time I'm in a meeting someone asks who's watching my baby. Nobody asks my husband this. How do you all handle it without sounding defensive?", likes: 31, liked: false, replies: [{ id: "r4", author: "Karen W.", isAnonymous: false, body: "I say 'She's in great hands!' with a big smile and redirect. It's not their business.", createdAt: "3h ago" }], createdAt: "3d ago" },
-];
-
 export default function CommunityPage() {
-  const [posts, setPosts] = useState(samplePosts);
+  const { user, profile } = useAuth();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [newPostTitle, setNewPostTitle] = useState("");
@@ -55,10 +50,60 @@ export default function CommunityPage() {
   const [replyText, setReplyText] = useState("");
   const [replyAnonymous, setReplyAnonymous] = useState(false);
   const [showNewPost, setShowNewPost] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const fetchPosts = async () => {
+    setLoading(true);
+    const { data: postsData, error } = await supabase
+      .from("community_posts")
+      .select("*, author:profiles!community_posts_author_id_fkey(full_name)")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching posts:", error);
+      setLoading(false);
+      return;
+    }
+
+    const postsWithReplies: Post[] = [];
+    for (const post of postsData || []) {
+      const { data: repliesData } = await supabase
+        .from("community_replies")
+        .select("*, author:profiles!community_replies_author_id_fkey(full_name)")
+        .eq("post_id", post.id)
+        .order("created_at", { ascending: true });
+
+      postsWithReplies.push({
+        id: post.id,
+        author: post.is_anonymous ? "Anonymous Mom" : (post.author?.full_name || "User"),
+        isAnonymous: post.is_anonymous,
+        category: post.category,
+        title: post.title,
+        body: post.body,
+        likes: post.likes_count || 0,
+        liked: false,
+        replies: (repliesData || []).map((r: any) => ({
+          id: r.id,
+          author: r.is_anonymous ? "Anonymous Mom" : (r.author?.full_name || "User"),
+          isAnonymous: r.is_anonymous,
+          body: r.body,
+          createdAt: new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        })),
+        createdAt: new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      });
+    }
+
+    setPosts(postsWithReplies);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchPosts();
+  }, []);
 
   const filteredPosts = filter === "all" ? posts : posts.filter((p) => p.category === filter);
 
-  const handleLike = (postId: string) => {
+  const handleLike = async (postId: string) => {
     setPosts((prev) =>
       prev.map((p) =>
         p.id === postId
@@ -66,17 +111,50 @@ export default function CommunityPage() {
           : p
       )
     );
+    if (selectedPost?.id === postId) {
+      setSelectedPost((prev) =>
+        prev ? { ...prev, liked: !prev.liked, likes: prev.liked ? prev.likes - 1 : prev.likes + 1 } : null
+      );
+    }
+
+    const post = posts.find((p) => p.id === postId);
+    if (post) {
+      const newCount = post.liked ? post.likes - 1 : post.likes + 1;
+      await supabase.from("community_posts").update({ likes_count: newCount }).eq("id", postId);
+    }
   };
 
-  const handleCreatePost = () => {
-    if (!newPostTitle.trim() || !newPostBody.trim()) return;
+  const handleCreatePost = async () => {
+    if (!newPostTitle.trim() || !newPostBody.trim() || !user) return;
+    setSubmitting(true);
+
+    const { data, error } = await supabase
+      .from("community_posts")
+      .insert({
+        author_id: user.id,
+        company_id: profile?.company_id || null,
+        category: newPostCategory,
+        title: newPostTitle.trim(),
+        body: newPostBody.trim(),
+        is_anonymous: newPostAnonymous,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error creating post:", error);
+      toast.error("Failed to create post. Please try again.");
+      setSubmitting(false);
+      return;
+    }
+
     const newPost: Post = {
-      id: Date.now().toString(),
-      author: newPostAnonymous ? "Anonymous Mom" : "You",
+      id: data.id,
+      author: newPostAnonymous ? "Anonymous Mom" : (profile?.full_name || "You"),
       isAnonymous: newPostAnonymous,
       category: newPostCategory,
-      title: newPostTitle,
-      body: newPostBody,
+      title: newPostTitle.trim(),
+      body: newPostBody.trim(),
       likes: 0,
       liked: false,
       replies: [],
@@ -87,16 +165,37 @@ export default function CommunityPage() {
     setNewPostBody("");
     setNewPostAnonymous(false);
     setShowNewPost(false);
+    setSubmitting(false);
     toast.success("Post created!");
   };
 
-  const handleReply = () => {
-    if (!replyText.trim() || !selectedPost) return;
+  const handleReply = async () => {
+    if (!replyText.trim() || !selectedPost || !user) return;
+    setSubmitting(true);
+
+    const { data, error } = await supabase
+      .from("community_replies")
+      .insert({
+        post_id: selectedPost.id,
+        author_id: user.id,
+        body: replyText.trim(),
+        is_anonymous: replyAnonymous,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error creating reply:", error);
+      toast.error("Failed to post reply. Please try again.");
+      setSubmitting(false);
+      return;
+    }
+
     const reply = {
-      id: Date.now().toString(),
-      author: replyAnonymous ? "Anonymous Mom" : "You",
+      id: data.id,
+      author: replyAnonymous ? "Anonymous Mom" : (profile?.full_name || "You"),
       isAnonymous: replyAnonymous,
-      body: replyText,
+      body: replyText.trim(),
       createdAt: "Just now",
     };
     setPosts((prev) =>
@@ -107,8 +206,19 @@ export default function CommunityPage() {
     setSelectedPost((prev) => prev ? { ...prev, replies: [...prev.replies, reply] } : null);
     setReplyText("");
     setReplyAnonymous(false);
+    setSubmitting(false);
     toast.success("Reply posted!");
   };
+
+  if (loading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
 
   if (selectedPost) {
     return (
@@ -146,7 +256,6 @@ export default function CommunityPage() {
             </CardContent>
           </Card>
 
-          {/* Replies */}
           <div className="space-y-4">
             <h3 className="font-semibold">Replies</h3>
             {selectedPost.replies.map((reply) => (
@@ -164,7 +273,6 @@ export default function CommunityPage() {
               </Card>
             ))}
 
-            {/* Reply Form */}
             <Card>
               <CardContent className="pt-4 space-y-3">
                 <Textarea
@@ -178,8 +286,9 @@ export default function CommunityPage() {
                     <Switch checked={replyAnonymous} onCheckedChange={setReplyAnonymous} id="reply-anon" />
                     <Label htmlFor="reply-anon" className="text-sm">Reply anonymously</Label>
                   </div>
-                  <Button onClick={handleReply} disabled={!replyText.trim()}>
-                    <Send className="mr-2 h-4 w-4" /> Reply
+                  <Button onClick={handleReply} disabled={!replyText.trim() || submitting}>
+                    {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    Reply
                   </Button>
                 </div>
               </CardContent>
@@ -203,7 +312,6 @@ export default function CommunityPage() {
           </Button>
         </div>
 
-        {/* New Post Form */}
         {showNewPost && (
           <Card className="border-primary/20">
             <CardHeader>
@@ -227,14 +335,16 @@ export default function CommunityPage() {
                 </div>
                 <div className="flex gap-2 ml-auto">
                   <Button variant="outline" onClick={() => setShowNewPost(false)}>Cancel</Button>
-                  <Button onClick={handleCreatePost}>Post</Button>
+                  <Button onClick={handleCreatePost} disabled={submitting}>
+                    {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Post
+                  </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Category Filter */}
         <div className="flex gap-2 flex-wrap">
           <Button variant={filter === "all" ? "default" : "outline"} size="sm" onClick={() => setFilter("all")}>All</Button>
           {categories.map((c) => (
@@ -244,8 +354,14 @@ export default function CommunityPage() {
           ))}
         </div>
 
-        {/* Posts */}
         <div className="space-y-4">
+          {filteredPosts.length === 0 && (
+            <div className="text-center py-12">
+              <MessageSquare className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+              <p className="text-lg font-medium text-muted-foreground">No posts yet</p>
+              <p className="text-sm text-muted-foreground mt-1">Be the first to share something with your community!</p>
+            </div>
+          )}
           {filteredPosts.map((post) => (
             <Card key={post.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedPost(post)}>
               <CardContent className="pt-6">

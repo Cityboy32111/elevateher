@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   Heart,
   Brain,
@@ -16,6 +15,9 @@ import {
   ArrowLeft,
   AlertTriangle,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 const feelings = [
   { id: "anxious", label: "Anxious", icon: Brain, color: "bg-purple-100 text-purple-700 hover:bg-purple-200" },
@@ -78,6 +80,7 @@ const sampleResponses: Record<string, { acknowledgment: string; exercises: Array
 };
 
 export default function EmotionalHealthPage() {
+  const { user } = useAuth();
   const [selectedFeeling, setSelectedFeeling] = useState<string | null>(null);
   const [intensity, setIntensity] = useState([5]);
   const [context, setContext] = useState("");
@@ -85,11 +88,27 @@ export default function EmotionalHealthPage() {
   const [loading, setLoading] = useState(false);
 
   const handleCheckin = async () => {
-    if (!selectedFeeling) return;
+    if (!selectedFeeling || !user) return;
     setLoading(true);
-    // Simulate AI response
-    await new Promise((r) => setTimeout(r, 1500));
-    setResponse(sampleResponses[selectedFeeling] || sampleResponses.anxious);
+
+    const responseData = sampleResponses[selectedFeeling] || sampleResponses.anxious;
+
+    // Save check-in to Supabase
+    const { error } = await supabase.from("emotional_checkins").insert({
+      user_id: user.id,
+      feeling_category: selectedFeeling,
+      intensity: intensity[0],
+      ai_response: responseData.acknowledgment,
+      exercises: responseData.exercises.map((e) => ({ title: e.title, steps: e.steps })),
+    });
+
+    if (error) {
+      console.error("Error saving check-in:", error);
+    }
+
+    // Small delay for UX
+    await new Promise((r) => setTimeout(r, 800));
+    setResponse(responseData);
     setLoading(false);
   };
 
@@ -103,7 +122,6 @@ export default function EmotionalHealthPage() {
   return (
     <AppLayout>
       <div className="space-y-6 max-w-4xl mx-auto">
-        {/* Crisis Disclaimer — permanent, non-dismissible */}
         <div className="rounded-lg border border-red-300 bg-red-50 p-4 flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
           <p className="text-sm text-red-800 leading-relaxed">
@@ -156,7 +174,6 @@ export default function EmotionalHealthPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Step 1: Select Feeling */}
             <div>
               <h3 className="text-lg font-semibold mb-4">How are you feeling?</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -177,7 +194,6 @@ export default function EmotionalHealthPage() {
               </div>
             </div>
 
-            {/* Step 2: Intensity */}
             {selectedFeeling && (
               <Card>
                 <CardHeader>
@@ -195,7 +211,6 @@ export default function EmotionalHealthPage() {
               </Card>
             )}
 
-            {/* Step 3: Context */}
             {selectedFeeling && (
               <Card>
                 <CardHeader>

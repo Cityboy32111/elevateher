@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { BookOpen, Clock, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Module {
   id: string;
@@ -18,7 +19,7 @@ interface Module {
   completed: boolean;
 }
 
-const partnerModules: Module[] = [
+const partnerModulesData: Module[] = [
   { id: "partner-mod-1", title: "Understanding the Mental Load", description: "Learn about the invisible labor that disproportionately falls on mothers", readingTime: "12 min", content: "The mental load refers to the invisible cognitive labor of managing a household and family. This includes remembering appointments, tracking supplies, planning meals, coordinating schedules, and dozens of other tasks that often go unnoticed. Research shows this load disproportionately falls on women, even in dual-income households.\n\nKey takeaways:\n- The mental load is real work that requires significant cognitive energy\n- Noticing what needs to be done is itself a form of labor\n- Sharing the mental load means taking ownership, not just 'helping'\n- Start by identifying all the invisible tasks in your household", completed: false },
   { id: "partner-mod-2", title: "Active Listening Techniques", description: "How to truly listen and validate your partner's experience", readingTime: "10 min", content: "Active listening means fully concentrating on what your partner is saying, rather than planning your response. When your partner shares her feelings about returning to work, she often needs to feel heard before she needs solutions.\n\nKey techniques:\n- Maintain eye contact and put away distractions\n- Reflect back what you heard: 'It sounds like you're feeling...'\n- Ask open-ended questions: 'Tell me more about that'\n- Avoid jumping to problem-solving unless asked", completed: false },
   { id: "partner-mod-3", title: "Division of Household Responsibilities", description: "Creating an equitable distribution of domestic tasks", readingTime: "15 min", content: "An equitable division of household labor is one of the strongest predictors of relationship satisfaction and successful return-to-work transitions. This module helps you audit and redistribute tasks fairly.", completed: false },
@@ -29,7 +30,7 @@ const partnerModules: Module[] = [
   { id: "partner-mod-8", title: "Being an Ally at Home and Work", description: "Advocating for working mothers in every sphere", readingTime: "11 min", content: "Being an ally means using your position and privilege to advocate for policies and practices that support working parents. This starts at home and extends to your own workplace.", completed: false },
 ];
 
-const managerModules: Module[] = [
+const managerModulesData: Module[] = [
   { id: "manager-mod-1", title: "Legal Obligations and Leave Policies", description: "Understanding FMLA, state laws, and company policies", readingTime: "15 min", content: "As a manager, you have legal obligations regarding maternity leave and return-to-work accommodations. This module covers FMLA basics, state-specific laws, and best practices for compliance.", completed: false },
   { id: "manager-mod-2", title: "Creating a Supportive Return Plan", description: "Building a structured re-onboarding experience", readingTime: "12 min", content: "A thoughtful return plan can make the difference between a successful transition and an employee deciding to leave. This module walks you through creating a structured re-onboarding experience.", completed: false },
   { id: "manager-mod-3", title: "Avoiding Unconscious Bias", description: "Recognizing and countering bias toward working mothers", readingTime: "14 min", content: "Unconscious bias against working mothers is well-documented and can significantly impact career trajectories. The 'motherhood penalty' affects hiring, performance reviews, promotion decisions, and daily interactions.", completed: false },
@@ -41,17 +42,54 @@ const managerModules: Module[] = [
 ];
 
 export default function EducationPage() {
-  const [partner, setPartner] = useState(partnerModules);
-  const [manager, setManager] = useState(managerModules);
+  const { user } = useAuth();
+  const [partner, setPartner] = useState(partnerModulesData);
+  const [manager, setManager] = useState(managerModulesData);
 
-  const toggleModule = (track: "partner" | "manager", moduleId: string) => {
+  // Load saved progress from Supabase
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("education_progress")
+      .select("module_id, completed")
+      .eq("user_id", user.id)
+      .then(({ data }) => {
+        if (!data) return;
+        const completedIds = new Set(data.filter((d) => d.completed).map((d) => d.module_id));
+        setPartner((prev) => prev.map((m) => ({ ...m, completed: completedIds.has(m.id) })));
+        setManager((prev) => prev.map((m) => ({ ...m, completed: completedIds.has(m.id) })));
+      });
+  }, [user]);
+
+  const toggleModule = async (track: "partner" | "manager", moduleId: string) => {
     const setter = track === "partner" ? setPartner : setManager;
-    setter((prev) =>
-      prev.map((m) =>
-        m.id === moduleId ? { ...m, completed: !m.completed } : m
-      )
-    );
-    toast.success("Progress updated!");
+    const modules = track === "partner" ? partner : manager;
+    const mod = modules.find((m) => m.id === moduleId);
+    if (!mod || !user) return;
+
+    const newCompleted = !mod.completed;
+    setter((prev) => prev.map((m) => m.id === moduleId ? { ...m, completed: newCompleted } : m));
+
+    const { error } = await supabase
+      .from("education_progress")
+      .upsert(
+        {
+          user_id: user.id,
+          track,
+          module_id: moduleId,
+          completed: newCompleted,
+          completed_at: newCompleted ? new Date().toISOString() : null,
+        },
+        { onConflict: "user_id,module_id" }
+      );
+
+    if (error) {
+      console.error("Error saving progress:", error);
+      setter((prev) => prev.map((m) => m.id === moduleId ? { ...m, completed: !newCompleted } : m));
+      toast.error("Failed to save progress");
+    } else {
+      toast.success("Progress updated!");
+    }
   };
 
   const getProgress = (modules: Module[]) => {
