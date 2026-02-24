@@ -1,7 +1,5 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -13,11 +11,8 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
-
 # production
+/dist
 /build
 
 # misc
@@ -30,18 +25,19 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
-/src/generated/prisma
+# vite
+vite.config.ts.timestamp-*
 
-# database
-*.db
-*.db-journal
+# supabase
+.supabase/
